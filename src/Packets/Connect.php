@@ -5,10 +5,13 @@ namespace AlhajiAki\Mqtt\Packets;
 use AlhajiAki\Mqtt\Config;
 use AlhajiAki\Mqtt\Contracts\Version;
 use AlhajiAki\Mqtt\Qos\Levels;
+use AlhajiAki\Mqtt\Traits\DefaultFixedHeader;
 use AlhajiAki\Mqtt\Validators\CheckClientId;
 
 class Connect extends PacketAbstract
 {
+    use DefaultFixedHeader;
+
     protected string $clientId;
 
     protected bool $cleanSession = true;

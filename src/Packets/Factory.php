@@ -37,22 +37,28 @@ class Factory
             case PacketTypes::PINGRESP:
                 return PingResponse::parse($version, $input);
 
+            case PacketTypes::PUBLISH:
+                return Publish::parse($version, $input);
+
+            case PacketTypes::PUBACK:
+                return PublishAck::parse($version, $input);
+
+            case PacketTypes::PUBREC:
+                return PublishReceived::parse($version, $input);
+
+            case PacketTypes::PUBREL:
+                return PublishRelease::parse($version, $input);
+
+            case PacketTypes::PUBCOMP:
+                return PublishComplete::parse($version, $input);
+
                 // case SubscribeAck::getControlPacketType():
                 //     return SubscribeAck::parse($version, $input);
 
-                // case Publish::getControlPacketType():
-                //     return Publish::parse($version, $input);
 
-                // case PublishComplete::getControlPacketType():
-                //     return PublishComplete::parse($version, $input);
-
-                // case PublishRelease::getControlPacketType():
-                //     return PublishRelease::parse($version, $input);
-
-                // case PublishReceived::getControlPacketType():
-                //     return PublishReceived::parse($version, $input);
         }
 
+        var_dump('error ' . $packet);
         throw new UnexpectedPacketException($packet);
     }
 }

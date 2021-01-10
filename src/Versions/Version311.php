@@ -10,4 +10,14 @@ class Version311 extends Version
     {
         return 0x04;
     }
+
+    public function getNextPacketId(): int
+    {
+        return ($this->packetId = ($this->packetId + 1) & 0xffff);
+    }
+
+    public function getPacketIdPayload(int $packetId)
+    {
+        return chr(($packetId & 0xff00) >> 8) . chr($packetId & 0xff);
+    }
 }

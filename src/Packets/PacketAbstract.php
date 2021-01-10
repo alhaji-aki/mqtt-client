@@ -32,10 +32,7 @@ abstract class PacketAbstract
      *
      * @return string
      */
-    protected function fixedHeader()
-    {
-        return chr($this->packetType()) . $this->remainingLength();
-    }
+    abstract protected function fixedHeader(): string;
 
     abstract protected function variableHeader();
 
