@@ -107,8 +107,7 @@ class Client
             var_dump('listening for packets');
             try {
                 foreach (PacketsFactory::getNextPacket($this->version, $data) as $packet) {
-                    var_dump($packet);
-                    // echo "received:\t" . get_class($packet) . PHP_EOL;
+                    $stream->emit($packet::EVENT, [$packet]);
                 }
             } catch (UnexpectedPacketException $exception) {
                 var_dump($exception->getMessage());
@@ -129,13 +128,13 @@ class Client
         $packet = new Connect($this->version, $this->config);
 
         $deferred = new Deferred();
-        $stream->on(ConnectAck::EVENT, function ($acknowledgement) use ($stream, $deferred) {
+        $stream->on(ConnectAck::EVENT, function (ConnectAck $acknowledgement) use ($stream, $deferred) {
             var_dump('acknowledged');
-            if ($acknowledgement->getConnected()) {
+            if ($acknowledgement->successful()) {
                 $deferred->resolve($stream);
             }
             $deferred->reject(
-                new ConnectionException($acknowledgement->getStatusCode())
+                new ConnectionException($acknowledgement->getStatusCode(), $acknowledgement->getStatusMessage())
             );
         });
 
