@@ -2,6 +2,12 @@
 
 namespace AlhajiAki\Mqtt\Contracts;
 
-interface Version{
-    public function protocolVersion() : int;
+abstract class Version
+{
+    abstract public function protocolVersion();
+
+    public function protocolIdentifierString()
+    {
+        return 'MQTT';
+    }
 }

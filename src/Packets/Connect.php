@@ -2,9 +2,10 @@
 
 namespace AlhajiAki\Mqtt\Packets;
 
+use AlhajiAki\Mqtt\Config;
 use AlhajiAki\Mqtt\Contracts\Version;
-use AlhajiAki\Mqtt\Options;
 use AlhajiAki\Mqtt\Qos\Levels;
+use AlhajiAki\Mqtt\Validators\CheckClientId;
 
 class Connect extends PacketAbstract
 {
@@ -26,63 +27,112 @@ class Connect extends PacketAbstract
 
     protected int $keepAlive = 60;
 
-    public function __construct(Version $version, Options $options)
+    public function __construct(Version $version, Config $config)
     {
         parent::__construct($version);
 
-        $this->clientId = $options->clientId;
+        $this->clientId = $config->clientId;
 
-        $this->cleanSession = $options->cleanSession;
+        $this->cleanSession = $config->cleanSession;
 
-        $this->username = $options->username;
+        $this->username = $config->username;
 
-        $this->password = $options->password;
+        $this->password = $config->password;
 
-        $this->lastWillTopic = $options->lastWillTopic;
+        $this->lastWillTopic = $config->lastWillTopic;
 
-        $this->lastWillRetain = $options->lastWillRetain;
+        $this->lastWillRetain = $config->lastWillRetain;
 
-        $this->lastWillMessage = $options->lastWillMessage;
+        $this->lastWillMessage = $config->lastWillMessage;
 
-        $this->lastWillQos = $options->lastWillQos;
+        $this->lastWillQos = $config->lastWillQos;
 
-        $this->keepAlive = $options->keepAlive;
+        $this->keepAlive = $config->keepAlive;
     }
 
-    public function packetType(): int
+    protected function packetType(): int
     {
         return PacketTypes::CONNECT;
     }
 
-    public function build()
+    protected function variableHeader(): string
     {
-        // TODO: build payload here
-        $payload = $this->fixedHeader() . $this->variableHeader() . $this->payload();
+        $header = '';
+        // 3.1.2.1 Protocol Name
+        // MSB(0) byte 1
+        $header .= chr(PacketTypes::MOST_SIGNIFICANT_BYTE);
 
-        return $payload;
+        // LSB(4) - byte 2
+        $header .= chr($this->version->protocolVersion());
 
-        // return $this->getFixedHeader() .
-        //     $this->getVariableHeader() .
-        //     $this->getPayload();
-        // $payload = chr(0x00);
-        // var_dump($payload);
+        // bytes 3,4,5,6
+        $header .= $this->version->protocolIdentifierString();
 
-        // $payload .= chr($this->version->protocolVersion());
-        // var_dump($payload);
+        // 3.1.2.2 Protocol Level
+        //  Protocol Level byte - byte 7
+        $header .= chr($this->version->protocolVersion());
+
+        // 3.1.2.3 Connect Flags
+        $header .= chr($this->connectFlags());
+
+        // keep alive MSB
+        $header .= chr($this->keepAlive >> 8);
+        // keep alive LSB
+        $header .= chr($this->keepAlive % 256);
+
+        return $header;
     }
 
-    public function variableHeader(): string
+    protected function buildPayload()
     {
-        return '';
+        if (CheckClientId::check($this->clientId)) {
+            $this->payload .= $this->lengthPrefixedField($this->clientId);
+        }
+
+        if (!empty($this->lastWillTopic) && !empty($this->lastWillMessage)) {
+            $this->payload .= $this->lengthPrefixedField($this->lastWillTopic);
+            $this->payload .= $this->lengthPrefixedField($this->lastWillMessage);
+        }
+
+        if (!empty($this->username)) {
+            $this->payload .= $this->lengthPrefixedField($this->username);
+        }
+
+        if (!empty($this->password)) {
+            $this->payload .= $this->lengthPrefixedField($this->password);
+        }
+
+        // var_dump($this->payload);
+        return $this->payload;
     }
 
-    public function payload(): string
+    protected function connectFlags()
     {
-        return '';
-    }
+        $byte = 0;
 
-    protected function fixedHeader()
-    {
-        return $this->packetType() . $this->remainingLength();
+        if ($this->cleanSession) {
+            $byte += 0x02;
+        }
+
+        if (!empty($this->lastWillTopic) && !empty($this->lastWillMessage)) {
+            $byte += 0x04;
+            if ($this->lastWillQos) {
+                $byte += 1 << 3;
+            }
+
+            if ($this->lastWillRetain) {
+                $byte += 0x20;
+            }
+        }
+
+        if (!empty($this->username)) {
+            $byte += 0x80;
+
+            if (!empty($this->password)) {
+                $byte += 0x40;
+            }
+        }
+
+        return $byte;
     }
 }

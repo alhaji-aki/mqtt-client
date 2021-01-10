@@ -5,7 +5,7 @@ namespace AlhajiAki\Mqtt;
 use AlhajiAki\Mqtt\Qos\Levels;
 use Illuminate\Support\Str;
 
-class Options
+class Config
 {
     /**
      * Username
@@ -128,7 +128,6 @@ class Options
 
     public function __get($name)
     {
-        var_dump($name);
         return $this->{$name};
     }
 }
