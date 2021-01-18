@@ -57,13 +57,15 @@ class Publish extends PacketAbstract implements PacketEvent
 
     protected function fixedHeader(): string
     {
-        $byte = $this->packetType() << 4 + ($this->qos << 1);
+        $byte = $this->packetType() << 4;
 
         if ($this->qos > 0) {
             if ($this->dup) {
                 $byte += 0x08;
             }
         }
+
+        $byte += $this->qos << 1;
 
         if ($this->retain) {
             $byte += 0x01;

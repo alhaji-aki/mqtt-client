@@ -1,5 +1,6 @@
 <?php
 
+use AlhajiAki\Mqtt\Qos\Levels;
 use React\Socket\ConnectionInterface;
 
 require_once __DIR__ . '/index.php';
@@ -13,9 +14,9 @@ $connection->then(function (ConnectionInterface $stream) use ($client) {
         'time' => time(),
     ];
 
-    $qos = 2;  // 0
+    $qos = Levels::AT_MOST_ONCE_DELIVERY;  // 0
 
-    $client->publish($stream, 'foo/bar', json_encode($data), $qos, false, false)
+    $client->publish($stream, 'foo/bar', json_encode($data), $qos)
         ->then(function (ConnectionInterface $stream) use ($client) {
             /**
              * Disconnect when published

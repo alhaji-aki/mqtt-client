@@ -92,6 +92,7 @@ class Client
 
     public function connect()
     {
+        $this->logger->debug(sprintf('Initiate connection to %s', $this->host));
         $promise = $this->connector->connect($this->host);
 
         $promise->then(function (ConnectionInterface $stream) {
@@ -255,7 +256,7 @@ class Client
      */
     protected function listenersForPackets(ConnectionInterface $stream)
     {
-        $this->logger->debug('setting listeners');
+        $this->logger->debug('setting up listeners');
         $stream->on('data', function ($data) use ($stream) {
             $this->logger->debug('listening for packets');
             try {
