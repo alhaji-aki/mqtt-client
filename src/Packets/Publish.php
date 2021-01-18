@@ -8,6 +8,8 @@ use AlhajiAki\Mqtt\Qos\Levels;
 
 class Publish extends PacketAbstract implements PacketEvent
 {
+    const EVENT = 'PUBLISH';
+
     /**
      * @var int
      */
@@ -48,9 +50,14 @@ class Publish extends PacketAbstract implements PacketEvent
         return PacketTypes::PUBLISH;
     }
 
+    public function packetTypeString(): string
+    {
+        return 'PUBLISH';
+    }
+
     protected function fixedHeader(): string
     {
-        $byte = $this->packetType() + ($this->qos << 1);
+        $byte = $this->packetType() << 4 + ($this->qos << 1);
 
         if ($this->qos > 0) {
             if ($this->dup) {
@@ -62,7 +69,7 @@ class Publish extends PacketAbstract implements PacketEvent
             $byte += 0x01;
         }
 
-        return chr($byte) . $this->remainingLength();
+        return chr($byte) . $this->encodeRemainingLength($this->remainingLength());
     }
 
     protected function variableHeader()
@@ -86,11 +93,21 @@ class Publish extends PacketAbstract implements PacketEvent
     }
 
     /**
-     * @return int
+     * @return int|null
      */
-    public function getPacketId(): int
+    public function getPacketId()
     {
         return $this->packetId;
+    }
+
+    public function setPacketId($packetId)
+    {
+        $this->packetId = $packetId;
+    }
+
+    public function getTopic()
+    {
+        return $this->topic;
     }
 
     public function setTopic(string $topic)
@@ -98,9 +115,19 @@ class Publish extends PacketAbstract implements PacketEvent
         $this->topic = $topic;
     }
 
+    public function getMessage()
+    {
+        return $this->message;
+    }
+
     public function setMessage(string $message)
     {
         $this->message = $message;
+    }
+
+    public function getQos()
+    {
+        return $this->qos;
     }
 
     public function setQos(int $qos)
@@ -108,9 +135,20 @@ class Publish extends PacketAbstract implements PacketEvent
         $this->qos = $qos;
     }
 
+    public function getDup()
+    {
+        return $this->dup;
+    }
+
+
     public function setDup(bool $dup)
     {
         $this->dup = $dup;
+    }
+
+    public function getRetain()
+    {
+        return $this->retain;
     }
 
     public function setRetain(bool $retain)
@@ -118,30 +156,44 @@ class Publish extends PacketAbstract implements PacketEvent
         $this->retain = $retain;
     }
 
+    public function getPayload()
+    {
+        return $this->payload;
+    }
+
+    public function setPayload($payload)
+    {
+        $this->payload = $payload;
+    }
+
     public static function parse(Version $version, $input)
     {
         $packet = new static($version);
 
-        var_dump($input);
+        // the fixed header byte is the 1st byte
+        $fixedHeaderByte = $input[0];
 
-        $flags = ord($input[0]) & 0x0f;
-        $packet->setDup($flags == 0x80);
+        // setting flags
+        $flags = ord($fixedHeaderByte) & 0x0f;
         $packet->setRetain($flags == 0x01);
+        $packet->setDup($flags == 0x80);
         $packet->setQos(($flags >> 1) & 0x03);
 
-        $topicLength = (ord($input[$bytesRead]) << 8) + ord($input[$bytesRead + 1]);
-        $packet->setTopic(substr($input, 2 + $bytesRead, $topicLength));
-        $payload = substr($input, $bytesRead + 2 + $topicLength);
+        // the variable header starts from byte 2 which contains the topic and packet identifier
+        // the topic is a length prefixed string. so we can get the length from the 2nd and 3rd byte
+        $topicLength = (ord($input[2]) << 8) + ord($input[3]);
+        $packet->setTopic(substr($input, 4, $topicLength));
 
-        if ($packet->getQos() == QoS\Levels::AT_MOST_ONCE_DELIVERY) {
-            // no packet id for QoS 0, the payload is the message
-            $packet->setPayload($payload);
+        $remaingData = substr($input, 4 + $topicLength);
+
+        // no packet id for QoS 0, remaining data is the message
+        if ($packet->getQos() == Levels::AT_MOST_ONCE_DELIVERY) {
+            $packet->setPayload($remaingData);
         } else {
-            if (strlen($payload) >= 2) {
-                $packet->setPacketId((ord($payload[0]) << 8) + ord($payload[1]));
-                // skip packet id (2 bytes) for QoS 1 and 2
-                $packet->setPayload(substr($payload, 2));
-            }
+            // packet id is the first two bytes of the remaining data
+            $packet->setPacketId((ord($remaingData[0]) << 8) + ord($remaingData[1]));
+            // rest of the remaining data is the message
+            $packet->setPayload(substr($remaingData, 2));
         }
 
         return $packet;

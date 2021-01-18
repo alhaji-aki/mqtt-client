@@ -58,6 +58,11 @@ class Connect extends PacketAbstract
         return PacketTypes::CONNECT;
     }
 
+    public function packetTypeString(): string
+    {
+        return 'CONNECT';
+    }
+
     protected function variableHeader(): string
     {
         $header = '';
@@ -105,7 +110,6 @@ class Connect extends PacketAbstract
             $this->payload .= $this->lengthPrefixedField($this->password);
         }
 
-        // var_dump($this->payload);
         return $this->payload;
     }
 

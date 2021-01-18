@@ -14,4 +14,9 @@ class PingRequest extends PacketAbstract
     {
         return PacketTypes::PINGREQ;
     }
+
+    public function packetTypeString(): string
+    {
+        return 'PINGREQ';
+    }
 }

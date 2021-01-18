@@ -19,6 +19,11 @@ class PublishReceived extends PacketAbstract implements PacketEvent
         return PacketTypes::PUBREC;
     }
 
+    public function packetTypeString(): string
+    {
+        return 'PUBREC';
+    }
+
     public static function parse(Version $version, $input)
     {
         $packet = new static($version);

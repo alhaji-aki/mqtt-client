@@ -22,7 +22,7 @@ abstract class PacketAbstract
 
     abstract protected function packetType(): int;
 
-    abstract protected function buildPayload();
+    abstract public function packetTypeString(): string;
 
     /**
      * Fixed header is the control field + packet length
@@ -36,16 +36,38 @@ abstract class PacketAbstract
 
     abstract protected function variableHeader();
 
+    abstract protected function buildPayload();
+
     /**
      * Get the remaining length
      *
-     * @return string
+     * @return int
      */
     protected function remainingLength()
     {
-        $length = strlen($this->variableHeader()) + strlen($this->payload());
+        return strlen($this->variableHeader()) + strlen($this->payload());
+    }
 
-        return chr($length);
+    protected function encodeRemainingLength(int $length)
+    {
+        if ($length < 0 || $length >= 128 * 128 * 128 * 128) {
+            // illegal length
+            return false;
+        }
+
+        $output = '';
+
+        do {
+            $encodedByte = $length & 0x7f;
+            $length = $length >> 7;
+            if ($length > 0) {
+                $encodedByte = $encodedByte | 128;
+            }
+
+            $output .= chr($encodedByte);
+        } while ($length > 0);
+
+        return $output;
     }
 
     public function get()
@@ -68,5 +90,20 @@ abstract class PacketAbstract
     protected function payload()
     {
         return $this->payload;
+    }
+
+    /**
+     * @param int $start
+     * @param string $input
+     * @return string
+     */
+    protected static function getPayloadLengthPrefixFieldInRawInput($start, $input)
+    {
+        $headerLength = 2;
+        $header = substr($input, $start, $headerLength);
+
+        $lengthOfMessage = ord($header[1]);
+
+        return substr($input, $start + $headerLength, $lengthOfMessage);
     }
 }

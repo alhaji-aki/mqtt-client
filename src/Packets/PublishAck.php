@@ -24,6 +24,11 @@ class PublishAck extends PacketAbstract implements PacketEvent
         return PacketTypes::PUBACK;
     }
 
+    public function packetTypeString(): string
+    {
+        return 'PUBACK';
+    }
+
     public static function parse(Version $version, $input)
     {
         $packet = new static($version);

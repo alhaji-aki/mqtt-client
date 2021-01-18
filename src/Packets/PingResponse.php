@@ -19,6 +19,11 @@ class PingResponse extends PacketAbstract implements PacketEvent
         return PacketTypes::PINGRESP;
     }
 
+    public function packetTypeString(): string
+    {
+        return 'PINGRESP';
+    }
+
     public static function parse(Version $version, string $input)
     {
         $packet = new static($version);

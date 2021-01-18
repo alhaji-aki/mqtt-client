@@ -36,6 +36,11 @@ class ConnectAck extends PacketAbstract implements PacketEvent
         return PacketTypes::CONNACK;
     }
 
+    public function packetTypeString(): string
+    {
+        return 'CONNACK';
+    }
+
     /**
      * Parse the data from the server
      *

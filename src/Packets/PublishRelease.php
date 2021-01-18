@@ -28,6 +28,11 @@ class PublishRelease extends PacketAbstract implements PacketEvent
         return PacketTypes::PUBREL;
     }
 
+    public function packetTypeString(): string
+    {
+        return 'PUBREL';
+    }
+
     public function setPacketId(int $packetId)
     {
         $this->packetId = $packetId;

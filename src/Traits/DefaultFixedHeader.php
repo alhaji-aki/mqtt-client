@@ -6,6 +6,6 @@ trait DefaultFixedHeader
 {
     protected function fixedHeader(): string
     {
-        return chr($this->packetType()) . $this->remainingLength();
+        return chr($this->packetType() << 4) . $this->encodeRemainingLength($this->remainingLength());
     }
 }

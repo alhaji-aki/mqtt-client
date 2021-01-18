@@ -14,10 +14,16 @@ use AlhajiAki\Mqtt\Packets\Publish;
 use AlhajiAki\Mqtt\Packets\PublishAck;
 use AlhajiAki\Mqtt\Packets\PublishReceived;
 use AlhajiAki\Mqtt\Packets\PublishRelease;
+use AlhajiAki\Mqtt\Packets\Subscribe;
+use AlhajiAki\Mqtt\Packets\SubscribeAck;
+use AlhajiAki\Mqtt\Packets\Unsubscribe;
+use AlhajiAki\Mqtt\Packets\UnsubscribeAck;
 use AlhajiAki\Mqtt\Qos\Levels;
 use AlhajiAki\Mqtt\Versions\Version311;
 use Exception;
 use Illuminate\Support\Arr;
+use Psr\Log\LoggerInterface;
+use Psr\Log\NullLogger;
 use React\EventLoop\Factory;
 use React\EventLoop\TimerInterface;
 use React\Promise\Deferred;
@@ -63,11 +69,22 @@ class Client
      */
     protected $loop;
 
-    public function __construct(string $host, array $config)
+    /**
+     * @var \Psr\Log\LoggerInterface
+     */
+    protected $logger;
+
+    public function __construct(string $host, array $config, LoggerInterface $logger = null)
     {
         $this->host = $host;
         $this->config = new Config(Arr::except($config, 'version'));
         $this->version = isset($config['version']) ? new $config['version'] : new Version311;
+
+        $this->logger = $logger;
+
+        if (!$this->logger) {
+            $this->logger = new NullLogger();
+        }
 
         $this->loop = Factory::create();
         $this->connector = new Connector($this->loop);
@@ -79,6 +96,13 @@ class Client
 
         $promise->then(function (ConnectionInterface $stream) {
             $this->listenersForPackets($stream);
+
+            /**
+             * Stop loop, when client disconnected from mqtt server
+             */
+            $stream->on('end', function () {
+                $this->loop()->stop();
+            });
         });
 
         $connection = $promise->then(function (ConnectionInterface $connection) {
@@ -86,7 +110,7 @@ class Client
         })->then(function (ConnectionInterface $stream) {
             return $this->keepAlive($stream, $this->config->keepAlive);
         })->then(null, function (Exception $exception) {
-            var_dump('Error: ' . $exception->getMessage());
+            $this->logger->debug('Error: ' . $exception->getMessage());
         });
 
         return $connection;
@@ -110,7 +134,7 @@ class Client
 
         if ($qos === Levels::AT_LEAST_ONCE_DELIVERY) {
             $stream->on(PublishAck::EVENT, function (PublishAck $message) use ($deferred, $stream) {
-                var_dump('QoS: ' . Levels::AT_LEAST_ONCE_DELIVERY . ', packetId: ' . $message->getPacketId());
+                $this->logger->debug('QoS: ' . Levels::AT_LEAST_ONCE_DELIVERY . ', packetId: ' . $message->getPacketId());
                 $deferred->resolve($stream);
             });
 
@@ -120,11 +144,11 @@ class Client
         if ($qos === Levels::EXACTLY_ONCE_DELIVERY) {
             $stream->on(PublishReceived::EVENT, function (PublishReceived $message) use ($stream, $deferred, $packet) {
                 if ($packet->getPacketId() === $message->getPacketId()) {
-                    var_dump('QoS: ' . Levels::AT_LEAST_ONCE_DELIVERY . ', packetId: ' . $message->getPacketId());
+                    $this->logger->debug('QoS: ' . Levels::EXACTLY_ONCE_DELIVERY . ', packetId: ' . $message->getPacketId());
 
                     $releasePacket = new PublishRelease($this->version);
                     $releasePacket->setPacketId($message->getPacketId());
-                    $stream->write($releasePacket->get());
+                    $this->sendPacketToStream($stream, $releasePacket);
 
                     $deferred->resolve($stream);
                 } else {
@@ -140,6 +164,71 @@ class Client
         return $deferred->promise();
     }
 
+    public function subscribe(ConnectionInterface $stream, $topics, int $qos = 0)
+    {
+        $packet = new Subscribe($this->version);
+
+        if (is_array($topics)) {
+            $packet->addSubscriptionArray($topics);
+        } else {
+            $packet->addSubscription($topics, $qos);
+        }
+
+        $success = $this->sendPacketToStream($stream, $packet);
+        $this->logger->debug('Sent subscription, packetId: ' . $packet->getPacketId());
+
+        $deferred = new Deferred();
+
+        if (!$success) {
+            $deferred->reject('Subscribing to topics failed');
+        }
+
+        $stream->on(SubscribeAck::EVENT, function (SubscribeAck $acknowledgement) use ($stream, $deferred, $packet) {
+            if ($packet->getPacketId() === $acknowledgement->getPacketId()) {
+                $this->logger->debug('Subscription successful', $acknowledgement->getResponse($packet->getTopicFilters()));
+                $deferred->resolve($stream);
+            } else {
+                $this->logger->debug('Subscription Acknowledgement has wrong packetId');
+                $deferred->reject('Subscription Acknowledgement has wrong packetId');
+            }
+        });
+
+        return $deferred->promise();
+    }
+
+    public function unsubscribe(ConnectionInterface $stream, $topics)
+    {
+        $packet = new Unsubscribe($this->version);
+
+        if (is_array($topics)) {
+            $packet->removeSubscriptionArray($topics);
+        } else {
+            $packet->removeSubscription($topics);
+        }
+
+        $success = $this->sendPacketToStream($stream, $packet);
+        $this->logger->debug('Sent unsubscription, packetId: ' . $packet->getPacketId());
+
+        $deferred = new Deferred();
+
+        if (!$success) {
+            $deferred->reject('Unsubscribing to topics failed');
+        }
+
+        $stream->on(UnsubscribeAck::EVENT, function (UnsubscribeAck $acknowledgement) use ($stream, $deferred, $packet) {
+            if ($packet->getPacketId() === $acknowledgement->getPacketId()) {
+                $this->logger->debug('Unsubscription successful', $packet->getTopicFilters());
+                $deferred->resolve($stream);
+            } else {
+                $this->logger->debug('Unsubscription Acknowledgement has wrong packetId');
+                $deferred->reject('Unsubscription Acknowledgement has wrong packetId');
+            }
+            $deferred->resolve($stream);
+        });
+
+        return $deferred->promise();
+    }
+
     public function disconnect(ConnectionInterface $stream)
     {
         $packet = new Disconnect($this->version);
@@ -148,22 +237,34 @@ class Client
         return resolve($stream);
     }
 
+    /**
+     * Get the loop object
+     *
+     * @var \React\EventLoop\LoopInterface
+     */
     public function loop()
     {
         return $this->loop;
     }
 
+    /**
+     * Register listeners for packets
+     *
+     * @param ConnectionInterface $stream
+     * @return void
+     */
     protected function listenersForPackets(ConnectionInterface $stream)
     {
-        // var_dump('setting listeners');
+        $this->logger->debug('setting listeners');
         $stream->on('data', function ($data) use ($stream) {
-            // var_dump('listening for packets');
+            $this->logger->debug('listening for packets');
             try {
                 foreach (PacketsFactory::getNextPacket($this->version, $data) as $packet) {
+                    $this->logger->debug("Received {$packet->packetTypeString()} from broker");
                     $stream->emit($packet::EVENT, [$packet]);
                 }
             } catch (UnexpectedPacketException $exception) {
-                var_dump($exception->getMessage());
+                $this->logger->debug($exception->getMessage());
                 $this->disconnect($stream);
             }
         });
@@ -177,18 +278,19 @@ class Client
      */
     protected function sendConnectPacket(ConnectionInterface $stream)
     {
-        // var_dump('sending connect packet');
         $packet = new Connect($this->version, $this->config);
 
         $deferred = new Deferred();
         $stream->on(ConnectAck::EVENT, function (ConnectAck $acknowledgement) use ($stream, $deferred) {
-            // var_dump('acknowledged');
+            $this->logger->debug('connection acknowledged');
             if ($acknowledgement->successful()) {
                 $deferred->resolve($stream);
+            } else {
+                $this->logger->debug($acknowledgement->getStatusMessage());
+                $deferred->reject(
+                    new ConnectionException($acknowledgement->getStatusCode(), $acknowledgement->getStatusMessage())
+                );
             }
-            $deferred->reject(
-                new ConnectionException($acknowledgement->getStatusCode(), $acknowledgement->getStatusMessage())
-            );
         });
 
         $this->sendPacketToStream($stream, $packet);
@@ -205,7 +307,7 @@ class Client
      */
     protected function sendPacketToStream(ConnectionInterface $stream, PacketAbstract $packet): bool
     {
-        // var_dump('sending packet to broker');
+        $this->logger->debug("sending {$packet->packetTypeString()} to broker");
 
         return $stream->write($packet->get());
     }
@@ -213,7 +315,7 @@ class Client
     protected function keepAlive(ConnectionInterface $stream, int $interval)
     {
         if ($interval > 0) {
-            // var_dump('Keep Alive interval is ' . $interval);
+            $this->logger->debug('Keep Alive interval is ' . $interval);
             $this->loop()->addPeriodicTimer($interval, function (TimerInterface $timer) use ($stream) {
                 $packet = new PingRequest($this->version);
                 $this->sendPacketToStream($stream, $packet);

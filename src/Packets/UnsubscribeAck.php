@@ -8,50 +8,41 @@ use AlhajiAki\Mqtt\Traits\DefaultFixedHeader;
 use AlhajiAki\Mqtt\Traits\DoesntBuildPayload;
 use AlhajiAki\Mqtt\Traits\EmptyVariableHeader;
 
-class PublishComplete extends PacketAbstract implements PacketEvent
+class UnsubscribeAck extends PacketAbstract implements PacketEvent
 {
     use DefaultFixedHeader, DoesntBuildPayload, EmptyVariableHeader;
 
-    const EVENT = 'PUBCOMP';
-
-    /**
-     * @var int
-     */
-    protected $packetId;
+    const EVENT = 'UNSUBACK';
 
     protected function packetType(): int
     {
-        return PacketTypes::PUBCOMP;
+        return PacketTypes::UNSUBACK;
     }
 
     public function packetTypeString(): string
     {
-        return 'PUBCOMP';
-    }
-
-    /**
-     * @param $messageId
-     */
-    public function setPacketId($messageId)
-    {
-        $this->packetId = $messageId;
-    }
-
-    /**
-     * @return int
-     */
-    public function getPacketId(): int
-    {
-        return $this->packetId;
+        return 'UNSUBACK';
     }
 
     public static function parse(Version $version, $input)
     {
         $packet = new static($version);
 
-        $data = unpack('n', substr($input, 2));
+        $message = substr($input, 2);
+        $data = unpack("n*", $message);
+
         $packet->setPacketId($data[1]);
 
         return $packet;
+    }
+
+    public function setPacketId(int $packetId)
+    {
+        $this->packetId = $packetId;
+    }
+
+    public function getPacketId(): int
+    {
+        return $this->packetId;
     }
 }

@@ -14,4 +14,9 @@ class Disconnect extends PacketAbstract
     {
         return PacketTypes::DISCONNECT;
     }
+
+    public function packetTypeString(): string
+    {
+        return 'DISCONNECT';
+    }
 }
