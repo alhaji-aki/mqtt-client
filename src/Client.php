@@ -2,22 +2,8 @@
 
 namespace AlhajiAki\Mqtt;
 
-use AlhajiAki\Mqtt\Exceptions\ConnectionException;
-use AlhajiAki\Mqtt\Exceptions\UnexpectedPacketException;
-use AlhajiAki\Mqtt\Packets\Connect;
-use AlhajiAki\Mqtt\Packets\ConnectAck;
-use AlhajiAki\Mqtt\Packets\Disconnect;
-use AlhajiAki\Mqtt\Packets\Factory as PacketsFactory;
-use AlhajiAki\Mqtt\Packets\PacketAbstract;
-use AlhajiAki\Mqtt\Packets\PingRequest;
-use AlhajiAki\Mqtt\Packets\Publish;
-use AlhajiAki\Mqtt\Packets\PublishAck;
-use AlhajiAki\Mqtt\Packets\PublishReceived;
-use AlhajiAki\Mqtt\Packets\PublishRelease;
-use AlhajiAki\Mqtt\Packets\Subscribe;
-use AlhajiAki\Mqtt\Packets\SubscribeAck;
-use AlhajiAki\Mqtt\Packets\Unsubscribe;
-use AlhajiAki\Mqtt\Packets\UnsubscribeAck;
+use AlhajiAki\Mqtt\Exceptions;
+use AlhajiAki\Mqtt\Packets;
 use AlhajiAki\Mqtt\Qos\Levels;
 use AlhajiAki\Mqtt\Versions\Version311;
 use Exception;
@@ -119,7 +105,7 @@ class Client
 
     public function publish(ConnectionInterface $stream, string $topic, string $message, int $qos = 0, bool $dup = false, bool $retain = false)
     {
-        $packet = new Publish($this->version);
+        $packet = new Packets\Publish($this->version);
         $packet->setTopic($topic);
         $packet->setMessage($message);
         $packet->setQos($qos);
@@ -134,7 +120,7 @@ class Client
         }
 
         if ($qos === Levels::AT_LEAST_ONCE_DELIVERY) {
-            $stream->on(PublishAck::EVENT, function (PublishAck $message) use ($deferred, $stream) {
+            $stream->on(Packets\PublishAck::EVENT, function (Packets\PublishAck $message) use ($deferred, $stream) {
                 $this->logger->debug('QoS: ' . Levels::AT_LEAST_ONCE_DELIVERY . ', packetId: ' . $message->getPacketId());
                 $deferred->resolve($stream);
             });
@@ -143,11 +129,11 @@ class Client
         }
 
         if ($qos === Levels::EXACTLY_ONCE_DELIVERY) {
-            $stream->on(PublishReceived::EVENT, function (PublishReceived $message) use ($stream, $deferred, $packet) {
+            $stream->on(Packets\PublishReceived::EVENT, function (Packets\PublishReceived $message) use ($stream, $deferred, $packet) {
                 if ($packet->getPacketId() === $message->getPacketId()) {
                     $this->logger->debug('QoS: ' . Levels::EXACTLY_ONCE_DELIVERY . ', packetId: ' . $message->getPacketId());
 
-                    $releasePacket = new PublishRelease($this->version);
+                    $releasePacket = new Packets\PublishRelease($this->version);
                     $releasePacket->setPacketId($message->getPacketId());
                     $this->sendPacketToStream($stream, $releasePacket);
 
@@ -167,7 +153,7 @@ class Client
 
     public function subscribe(ConnectionInterface $stream, $topics, int $qos = 0)
     {
-        $packet = new Subscribe($this->version);
+        $packet = new Packets\Subscribe($this->version);
 
         if (is_array($topics)) {
             $packet->addSubscriptionArray($topics);
@@ -184,7 +170,7 @@ class Client
             $deferred->reject('Subscribing to topics failed');
         }
 
-        $stream->on(SubscribeAck::EVENT, function (SubscribeAck $acknowledgement) use ($stream, $deferred, $packet) {
+        $stream->on(Packets\SubscribeAck::EVENT, function (Packets\SubscribeAck $acknowledgement) use ($stream, $deferred, $packet) {
             if ($packet->getPacketId() === $acknowledgement->getPacketId()) {
                 $this->logger->debug('Subscription successful', $acknowledgement->getResponse($packet->getTopicFilters()));
                 $deferred->resolve($stream);
@@ -199,7 +185,7 @@ class Client
 
     public function unsubscribe(ConnectionInterface $stream, $topics)
     {
-        $packet = new Unsubscribe($this->version);
+        $packet = new Packets\Unsubscribe($this->version);
 
         if (is_array($topics)) {
             $packet->removeSubscriptionArray($topics);
@@ -216,7 +202,7 @@ class Client
             $deferred->reject('Unsubscribing to topics failed');
         }
 
-        $stream->on(UnsubscribeAck::EVENT, function (UnsubscribeAck $acknowledgement) use ($stream, $deferred, $packet) {
+        $stream->on(Packets\UnsubscribeAck::EVENT, function (Packets\UnsubscribeAck $acknowledgement) use ($stream, $deferred, $packet) {
             if ($packet->getPacketId() === $acknowledgement->getPacketId()) {
                 $this->logger->debug('Unsubscription successful', $packet->getTopicFilters());
                 $deferred->resolve($stream);
@@ -232,7 +218,7 @@ class Client
 
     public function disconnect(ConnectionInterface $stream)
     {
-        $packet = new Disconnect($this->version);
+        $packet = new Packets\Disconnect($this->version);
         $this->sendPacketToStream($stream, $packet);
 
         return resolve($stream);
@@ -260,11 +246,11 @@ class Client
         $stream->on('data', function ($data) use ($stream) {
             $this->logger->debug('listening for packets');
             try {
-                foreach (PacketsFactory::getNextPacket($this->version, $data) as $packet) {
+                foreach (Packets\Factory::getNextPacket($this->version, $data) as $packet) {
                     $this->logger->debug("Received {$packet->packetTypeString()} from broker");
                     $stream->emit($packet::EVENT, [$packet]);
                 }
-            } catch (UnexpectedPacketException $exception) {
+            } catch (Exceptions\UnexpectedPacketException $exception) {
                 $this->logger->debug($exception->getMessage());
                 $this->disconnect($stream);
             }
@@ -279,17 +265,17 @@ class Client
      */
     protected function sendConnectPacket(ConnectionInterface $stream)
     {
-        $packet = new Connect($this->version, $this->config);
+        $packet = new Packets\Connect($this->version, $this->config);
 
         $deferred = new Deferred();
-        $stream->on(ConnectAck::EVENT, function (ConnectAck $acknowledgement) use ($stream, $deferred) {
+        $stream->on(Packets\ConnectAck::EVENT, function (Packets\ConnectAck $acknowledgement) use ($stream, $deferred) {
             $this->logger->debug('connection acknowledged');
             if ($acknowledgement->successful()) {
                 $deferred->resolve($stream);
             } else {
                 $this->logger->debug($acknowledgement->getStatusMessage());
                 $deferred->reject(
-                    new ConnectionException($acknowledgement->getStatusCode(), $acknowledgement->getStatusMessage())
+                    new Exceptions\ConnectionException($acknowledgement->getStatusCode(), $acknowledgement->getStatusMessage())
                 );
             }
         });
@@ -306,7 +292,7 @@ class Client
      * @param PacketAbstract $packet
      * @return boolean
      */
-    protected function sendPacketToStream(ConnectionInterface $stream, PacketAbstract $packet): bool
+    protected function sendPacketToStream(ConnectionInterface $stream, Packets\PacketAbstract $packet): bool
     {
         $this->logger->debug("sending {$packet->packetTypeString()} to broker");
 
@@ -318,7 +304,7 @@ class Client
         if ($interval > 0) {
             $this->logger->debug('Keep Alive interval is ' . $interval);
             $this->loop()->addPeriodicTimer($interval, function (TimerInterface $timer) use ($stream) {
-                $packet = new PingRequest($this->version);
+                $packet = new Packets\PingRequest($this->version);
                 $this->sendPacketToStream($stream, $packet);
             });
         }
