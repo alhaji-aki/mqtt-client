@@ -7,18 +7,26 @@ use Illuminate\Support\Arr;
 
 class CheckTopicsArray
 {
-    public static function check($item)
+    /**
+     * Checks if the array item has the correct properties
+     *
+     * @param int $index
+     * @param array $item
+     * @return bool
+     * @throws Exception
+     */
+    public static function check(int $index, array $item)
     {
         if (!Arr::has($item, ['topic', 'qos'])) {
-            throw new Exception('Array ' . print_r($item) . ' must contain a topic and qos keys');
+            throw new Exception("Array at position $index must contain a topic and qos keys");
         }
 
         if (!is_string($item['topic'])) {
-            throw new Exception('Topics must be a string');
+            throw new Exception("Topic in topics array at position $index must be a string");
         }
 
         if (!is_int($item['qos'])) {
-            throw new Exception('Qos must be an integer');
+            throw new Exception("Qos in topics array at position $index must be an integer");
         }
 
         return true;

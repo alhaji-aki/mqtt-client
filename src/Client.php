@@ -155,16 +155,22 @@ class Client
     {
         $packet = new Packets\Subscribe($this->version);
 
+        $deferred = new Deferred();
+
         if (is_array($topics)) {
-            $packet->addSubscriptionArray($topics);
+            try {
+                $packet->addSubscriptionArray($topics);
+            } catch (Exception $exception) {
+                $this->logger->debug('Error: ' . $exception->getMessage());
+                $this->disconnect($stream);
+                return $deferred->promise();
+            }
         } else {
             $packet->addSubscription($topics, $qos);
         }
 
         $success = $this->sendPacketToStream($stream, $packet);
         $this->logger->debug('Sent subscription, packetId: ' . $packet->getPacketId());
-
-        $deferred = new Deferred();
 
         if (!$success) {
             $deferred->reject('Subscribing to topics failed');

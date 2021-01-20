@@ -40,8 +40,8 @@ class Subscribe extends PacketAbstract
 
     public function addSubscriptionArray(array $topics)
     {
-        foreach ($topics as $item) {
-            CheckTopicsArray::check($item);
+        foreach ($topics as $key => $item) {
+            CheckTopicsArray::check($key, $item);
 
             $this->addSubscription($item['topic'], $item['qos']);
         }
