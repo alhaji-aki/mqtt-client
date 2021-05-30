@@ -32,6 +32,19 @@
     "config": {
         "sort-packages": true
     },
+    "extra": {
+        "branch-alias": {
+            "dev-master": "1.x-dev"
+        },
+        "laravel": {
+            "providers": [
+                "AlhajiAki\\Mqtt\\Laravel\\MqttServiceProvider"
+            ],
+            "aliases": {
+                "Mqtt": "AlhajiAki\\Mqtt\\Laravel\\Facades\\Mqtt"
+            }
+        }
+    },
     "minimum-stability": "dev",
     "prefer-stable": true
 }
